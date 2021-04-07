@@ -76,6 +76,7 @@ mime_t httpd_mime_types(const char *filename)
 {
     mime_t m = MIME_NULL;
     char *fext = httpd_file_suffix(filename);
+    HTTPD_DEBUG("filename = [%s], ext = [%s]", filename, fext);
     if (fext != NULL)
     {
         if (strcasecmp(fext, "text") == 0)
@@ -148,6 +149,8 @@ mime_t httpd_mime_types(const char *filename)
         }
     }
 
+    HTTPD_DEBUG("filename = [%s], mime = [%d]", filename, m);
+
     return m;
 }
 
@@ -190,6 +193,8 @@ char *httpd_content_type(const char *filename)
         content_type = DEF_CONTENT_TYPE;
         break;
     }
+
+ HTTPD_DEBUG("filename = [%s], content_type = [%s]", filename, content_type);
 
     return content_type;
 }
@@ -474,7 +479,7 @@ void httpd_serve_file(int client, const char *filename)
     while ((numchars > 0) && strcmp("\n", buf))
     { /* read & discard httpd_headers */
         numchars = httpd_get_line(client, buf, sizeof(buf));
-        HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
+        //HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
     }
 
     resource = fopen(filename, "rb");
@@ -624,7 +629,7 @@ void httpd_accept_request(int client)
 
     numchars = httpd_get_line(client, buf, sizeof(buf));
 
-    HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
+    //HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
 
     i = 0;
     j = 0;
@@ -695,7 +700,7 @@ void httpd_accept_request(int client)
         while ((numchars > 0) && strcmp("\n", buf))
         { /* read & discard httpd_headers */
             numchars = httpd_get_line(client, buf, sizeof(buf));
-            HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
+            //HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
         }
         httpd_error_not_found(client);
     }

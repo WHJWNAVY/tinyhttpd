@@ -4,7 +4,7 @@
 #include <string.h>
 #include <errno.h>
 
-//#define __DEBUG__ 1
+#define __DEBUG__ 1
 
 #define HTTPD_LOG_FILE "httpd_debug.log" // NULL
 #define HTTPD_LOG_LEVEL_DEBUG "DEBUG"
