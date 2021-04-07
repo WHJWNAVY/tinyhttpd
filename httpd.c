@@ -788,6 +788,7 @@ int main(void)
 
     server_sock = httpd_startup(&port);
     printf("httpd running on port %d\n", port);
+    HTTPD_DEBUG("httpd running on port %d", port);
 
     while (1)
     {
