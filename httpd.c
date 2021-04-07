@@ -36,6 +36,7 @@
 #define SERVER_BUFF_SZ 1024
 #define SERVER_PORT 0 // 0 FOR RANDOM
 
+// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
 typedef enum mime_e
 {
     MIME_NULL = 0,
@@ -193,6 +194,7 @@ char *httpd_content_type(const char *filename)
     return content_type;
 }
 
+// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status
 char *httpd_status_code(uint32_t status_code)
 {
     char *status_type = NULL;
@@ -264,6 +266,7 @@ char *httpd_status_code(uint32_t status_code)
 /* Parameters: the socket to print the httpd_headers on
  *             the name of the file */
 /**********************************************************************/
+// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers
 void httpd_headers(int client, int status_code, const char *content_type, const char *message)
 {
     char buf[SERVER_BUFF_SZ] = {0};
