@@ -29,7 +29,7 @@
 
 #define ISspace(x) isspace((int)(x))
 
-#define SERVER_STRING "Server: Tiny Httpd/0.2.0"
+#define HTTPD_HEADERS "Server: Tiny Httpd/0.2.0\r\nCache-control: no-cache\r\nPragma: no-cache\r\nExpires: 0"
 
 #define SERVER_INDEX "index.html"
 #define SERVER_BASEDIR "/tmp/www/"
@@ -276,7 +276,7 @@ void httpd_headers(int client, int status_code, const char *content_type, const 
     HTTPD_DEBUG("send buf = [%s]", buf);
 
     bzero(buf, sizeof(buf));
-    sprintf(buf, "%s\r\n", SERVER_STRING);
+    sprintf(buf, "%s\r\n", HTTPD_HEADERS);
     send(client, buf, strlen(buf), 0);
 
     bzero(buf, sizeof(buf));
@@ -296,7 +296,7 @@ void httpd_headers(int client, int status_code, const char *content_type, const 
 #else
     char *p_buf = buf;
     p_buf += sprintf(p_buf, "HTTP/1.0 %s\r\n", httpd_status_code(status_code));
-    p_buf += sprintf(p_buf, "%s\r\n", SERVER_STRING);
+    p_buf += sprintf(p_buf, "%s\r\n", HTTPD_HEADERS);
     p_buf += sprintf(p_buf, "Content-Type: %s\r\n\r\n", content_type);
 
     if ((message != NULL) && (strlen(message) > 0))
@@ -447,7 +447,6 @@ void httpd_cat_file(int client, FILE *resource)
     size_t count = 0;
     char buf[SERVER_BUFF_SZ] = {0};
 
-#if 1
     while (!feof(resource))
     {
         count = fread(buf, 1, sizeof(buf), resource);
@@ -455,15 +454,6 @@ void httpd_cat_file(int client, FILE *resource)
         send(client, buf, count, 0);
         bzero(buf, sizeof(buf));
     }
-#else
-    fgets(buf, sizeof(buf), resource);
-    while (!feof(resource))
-    {
-        HTTPD_DEBUG("send buf [%s]", buf);
-        send(client, buf, strlen(buf), 0);
-        fgets(buf, sizeof(buf), resource);
-    }
-#endif
 }
 
 /**********************************************************************/
@@ -757,7 +747,7 @@ int httpd_startup(u_short *port)
     struct sockaddr_in name = {0};
 
     httpd = socket(PF_INET, SOCK_STREAM, 0);
-    if (httpd == -1)
+    if (httpd < 0)
     {
         httpd_error_die("socket");
     }
@@ -772,7 +762,7 @@ int httpd_startup(u_short *port)
     if (*port == 0) /* if dynamically allocating a port */
     {
         int namelen = sizeof(name);
-        if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)
+        if (getsockname(httpd, (struct sockaddr *)&name, &namelen) < 0)
         {
             httpd_error_die("getsockname");
         }
@@ -804,7 +794,7 @@ int main(void)
         client_sock = accept(server_sock,
                              (struct sockaddr *)&client_name,
                              &client_name_len);
-        if (client_sock == -1)
+        if (client_sock < 0)
         {
             httpd_error_die("accept");
         }
