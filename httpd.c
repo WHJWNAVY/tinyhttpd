@@ -9,7 +9,7 @@
  *  1) Comment out the #include <pthread.h> line.
  *  2) Comment out the line that defines the variable newthread.
  *  3) Comment out the two lines that run pthread_create().
- *  4) Uncomment the line that runs accept_request().
+ *  4) Uncomment the line that runs httpd_accept_request().
  *  5) Remove -lsocket from the Makefile.
  */
 #include <stdio.h>
@@ -29,24 +29,12 @@
 
 #define ISspace(x) isspace((int)(x))
 
-#define SERVER_STRING "Server: jdbhttpd/0.1.0\r\n"
+#define SERVER_STRING "Server: Tiny Httpd/0.2.0"
 
+#define SERVER_INDEX "index.html"
 #define SERVER_BASEDIR "/tmp/www/"
 #define SERVER_BUFF_SZ 1024
 #define SERVER_PORT 0 // 0 FOR RANDOM
-
-void accept_request(int);
-void bad_request(int);
-void cat_file(int, FILE *);
-void cannot_execute(int);
-void error_die(const char *);
-void execute_cgi(int, const char *, const char *, const char *);
-int get_line(int, char *, int);
-void headers(int, const char *);
-void not_found(int);
-void serve_file(int, const char *);
-int startup(u_short *);
-void unimplemented(int);
 
 typedef enum mime_e
 {
@@ -64,10 +52,15 @@ typedef enum mime_e
     MIME_MAX,
 } mime_t;
 
-const char *file_suffix(const char *fspec)
+const char *httpd_file_suffix(const char *filename)
 {
     char *ext = NULL;
-    char *et = (char *)fspec;
+    char *et = (char *)filename;
+    if ((filename == NULL) || (strlen(filename) <= 0))
+    {
+        return NULL;
+    }
+
     while (((et = strrchr(et, '.')) != NULL) && (strlen(et) > 1))
     {
         et += 1;
@@ -78,10 +71,10 @@ const char *file_suffix(const char *fspec)
     return ext;
 }
 
-mime_t mime_types(const char *fspec)
+mime_t httpd_mime_types(const char *filename)
 {
     mime_t m = MIME_NULL;
-    char *fext = file_suffix(fspec);
+    char *fext = httpd_file_suffix(filename);
     if (fext != NULL)
     {
         if (strcasecmp(fext, "text") == 0)
@@ -157,158 +150,286 @@ mime_t mime_types(const char *fspec)
     return m;
 }
 
+#define DEF_CONTENT_TYPE "text/html"
+char *httpd_content_type(const char *filename)
+{
+    mime_t mime = MIME_NULL;
+    char *content_type = NULL;
+    mime = httpd_mime_types(filename); /* could use filename to determine file type */
+    switch (mime)
+    {
+    case MIME_TEXT_PLAN:
+        content_type = "text/plain";
+        break;
+    case MIME_TEXT_HTML:
+        content_type = "text/html";
+        break;
+    case MIME_TEXT_CSS:
+        content_type = "text/css";
+        break;
+    case MIME_TEXT_JAVASCRIPT:
+        content_type = "text/javascript";
+        break;
+    case MIME_APP_JSON:
+        content_type = "application/json";
+        break;
+    case MIME_IMAGE_JPEG:
+        content_type = "image/jpeg";
+        break;
+    case MIME_IMAGE_BMP:
+        content_type = "image/bmp";
+        break;
+    case MIME_IMAGE_PNG:
+        content_type = "image/png";
+        break;
+    case MIME_IMAGE_GIF:
+        content_type = "image/gif";
+        break;
+    default:
+        content_type = DEF_CONTENT_TYPE;
+        break;
+    }
+
+    return content_type;
+}
+
+char *httpd_status_code(uint32_t status_code)
+{
+    char *status_type = NULL;
+    switch (status_code)
+    {
+    case 200:
+        status_type = "200 OK";
+        break;
+    case 206:
+        status_type = "206 Partial Content";
+        break;
+    case 301:
+        status_type = "301 Moved Permanently";
+        break;
+    case 302:
+        status_type = "302 Found";
+        break;
+    case 304:
+        status_type = "304 Not Modified";
+        break;
+    case 400:
+        status_type = "400 Bad Request";
+        break;
+    case 401:
+        status_type = "401 Unauthorized";
+        break;
+    case 403:
+        status_type = "403 Forbidden";
+        break;
+    case 404:
+        status_type = "404 Not Found";
+        break;
+    case 405:
+        status_type = "405 Method Not Allowed";
+        break;
+    case 408:
+        status_type = "408 Request Time-out";
+        break;
+    case 411:
+        status_type = "411 Length Required";
+        break;
+    case 412:
+        status_type = "412 Precondition Failed";
+        break;
+    case 416:
+        status_type = "416 Requested range not satisfiable";
+        break;
+    case 500:
+        status_type = "500 Internal Server Error";
+        break;
+    case 501:
+        status_type = "501 Not Implemented";
+        break;
+    case 503:
+        status_type = "503 Server Unavailable";
+        break;
+    default:
+        status_type = "404 Not Found";
+        break;
+    }
+
+    HTTPD_DEBUG("code = [%d], status = [%s]", status_code, status_type);
+
+    return status_type;
+}
+
 /**********************************************************************/
-/* A request has caused a call to accept() on the server port to
- * return.  Process the request appropriately.
- * Parameters: the socket connected to the client */
+/* Return the informational HTTP httpd_headers about a file. */
+/* Parameters: the socket to print the httpd_headers on
+ *             the name of the file */
 /**********************************************************************/
-void accept_request(int client)
+void httpd_headers(int client, int status_code, const char *content_type, const char *message)
 {
     char buf[SERVER_BUFF_SZ] = {0};
-    int numchars = 0;
-    char method[255] = {0};
-    char url[255] = {0};
-    char path[512] = {0};
-    size_t i = 0, j = 0;
-    struct stat st = {0};
-    int cgi = 0; /* becomes true if server decides this is a CGI
-                    * program */
-    char *query_string = NULL;
-    mime_t mime = MIME_NULL;
+#if 0
+    sprintf(buf, "HTTP/1.0 %s\r\n", httpd_status_code(status_code));
+    send(client, buf, strlen(buf), 0);
+    HTTPD_DEBUG("send buf = [%s]", buf);
 
-    numchars = get_line(client, buf, sizeof(buf));
+    bzero(buf, sizeof(buf));
+    sprintf(buf, "%s\r\n", SERVER_STRING);
+    send(client, buf, strlen(buf), 0);
 
-    HTTPD_DEBUG("get_line [%s], len[%d]", buf, numchars);
+    bzero(buf, sizeof(buf));
+    sprintf(buf, "Content-Type: %s\r\n\r\n", content_type);
+    send(client, buf, strlen(buf), 0);
 
-    i = 0;
-    j = 0;
-    while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
+    // bzero(buf, sizeof(buf));
+    // strcpy(buf, "\r\n");
+    // send(client, buf, strlen(buf), 0);
+
+    if ((message != NULL) && (strlen(message) > 0))
     {
-        method[i] = buf[j];
-        i++;
-        j++;
+        bzero(buf, sizeof(buf));
+        sprintf(buf, "%s\r\n", message);
+        send(client, buf, strlen(buf), 0);
     }
-    method[i] = '\0';
+#else
+    char *p_buf = buf;
+    p_buf += sprintf(p_buf, "HTTP/1.0 %s\r\n", httpd_status_code(status_code));
+    p_buf += sprintf(p_buf, "%s\r\n", SERVER_STRING);
+    p_buf += sprintf(p_buf, "Content-Type: %s\r\n\r\n", content_type);
 
-    HTTPD_DEBUG("method = [%s]", method);
-
-    if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
+    if ((message != NULL) && (strlen(message) > 0))
     {
-        unimplemented(client);
-        return;
+        p_buf += sprintf(p_buf, "%s\r\n", message);
     }
-
-    if (strcasecmp(method, "POST") == 0)
-    {
-        cgi = 1;
-    }
-
-    i = 0;
-    while (ISspace(buf[j]) && (j < sizeof(buf)))
-    {
-        j++;
-    }
-    while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
-    {
-        url[i] = buf[j];
-        i++;
-        j++;
-    }
-    url[i] = '\0';
-
-    HTTPD_DEBUG("url = [%s]", url);
-
-    if (strcasecmp(method, "GET") == 0)
-    {
-        query_string = url;
-        while ((*query_string != '?') && (*query_string != '\0'))
-        {
-            query_string++;
-        }
-        if (*query_string == '?')
-        {
-            cgi = 1;
-            *query_string = '\0';
-            query_string++;
-            HTTPD_DEBUG("query_string = [%s]", query_string);
-        }
-    }
-
-    sprintf(path, "%shtdocs%s", SERVER_BASEDIR, url);
-    if (path[strlen(path) - 1] == '/')
-    {
-        strcat(path, "index.html");
-    }
-
-    HTTPD_DEBUG("path = [%s]", path);
-
-    if (stat(path, &st) == -1)
-    {
-        DEBUG_PERROR("stat");
-        while ((numchars > 0) && strcmp("\n", buf))
-        { /* read & discard headers */
-            numchars = get_line(client, buf, sizeof(buf));
-            HTTPD_DEBUG("get_line [%s], len[%d]", buf, numchars);
-        }
-        not_found(client);
-    }
-    else
-    {
-        if ((st.st_mode & S_IFMT) == S_IFDIR)
-        {
-            strcat(path, "/index.html");
-            HTTPD_DEBUG("path = [%s]", path);
-        }
-
-        if (mime_types(path) == MIME_CGI)
-        {
-            if ((st.st_mode & S_IXUSR) ||
-                (st.st_mode & S_IXGRP) ||
-                (st.st_mode & S_IXOTH))
-            {
-                cgi = 1;
-                HTTPD_DEBUG("cgi = [%d]", cgi);
-            }
-        }
-
-        if (!cgi)
-        {
-            HTTPD_DEBUG("serve_file [%s]", path);
-            serve_file(client, path);
-        }
-        else
-        {
-            HTTPD_DEBUG("execute_cgi [%s] [%s] [%s]", path, method, query_string);
-            execute_cgi(client, path, method, query_string);
-        }
-    }
-
-    close(client);
+    send(client, buf, strlen(buf), 0);
+    HTTPD_DEBUG("send buf = [%s]", buf);
+#endif
 }
 
 /**********************************************************************/
 /* Inform the client that a request it has made has a problem.
  * Parameters: client socket */
 /**********************************************************************/
-void bad_request(int client)
+void httpd_error_bad_request(int client)
 {
     char buf[SERVER_BUFF_SZ] = {0};
+    char *p_buf = buf;
 
-    sprintf(buf, "HTTP/1.0 400 BAD REQUEST\r\n");
-    HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, sizeof(buf), 0);
-    sprintf(buf, "Content-type: text/html\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, sizeof(buf), 0);
-    sprintf(buf, "\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, sizeof(buf), 0);
-    sprintf(buf, "<P>Your browser sent a bad request, ");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, sizeof(buf), 0);
-    sprintf(buf, "such as a POST without a Content-Length.\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, sizeof(buf), 0);
+    p_buf += sprintf(p_buf, "<HTML>\r\n<HEAD>\r\n<TITLE>Bad Request</TITLE>\r\n</HEAD>\r\n<BODY>\r\n");
+    p_buf += sprintf(p_buf, "<H1>Your browser sent a bad request, such as a POST without a Content-Length.</H1>");
+    p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
+
+    httpd_headers(client, 400, DEF_CONTENT_TYPE, buf);
+}
+
+/**********************************************************************/
+/* Inform the client that a CGI script could not be executed.
+ * Parameter: the client socket descriptor. */
+/**********************************************************************/
+void httpd_error_cannot_execute(int client)
+{
+    char buf[SERVER_BUFF_SZ] = {0};
+    char *p_buf = buf;
+
+    p_buf += sprintf(p_buf, "<HTML>\r\n<HEAD>\r\n<TITLE>Internal Server Error</TITLE>\r\n</HEAD>\r\n<BODY>\r\n");
+    p_buf += sprintf(p_buf, "<H1>Error prohibited CGI execution.</H1>");
+    p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
+
+    httpd_headers(client, 500, DEF_CONTENT_TYPE, buf);
+}
+
+/**********************************************************************/
+/* Give a client a 404 not found status message. */
+/**********************************************************************/
+void httpd_error_not_found(int client)
+{
+    char buf[SERVER_BUFF_SZ] = {0};
+    char *p_buf = buf;
+
+    p_buf += sprintf(p_buf, "<HTML>\r\n<HEAD>\r\n<TITLE>Not Found</TITLE>\r\n</HEAD>\r\n<BODY>\r\n");
+    p_buf += sprintf(p_buf, "<H1>The server could not fulfill your request because the resource specified is unavailable or nonexistent.</H1>");
+    p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
+
+    httpd_headers(client, 404, DEF_CONTENT_TYPE, buf);
+}
+
+/**********************************************************************/
+/* Inform the client that the requested web method has not been
+ * implemented.
+ * Parameter: the client socket */
+/**********************************************************************/
+void httpd_error_unimplemented(int client)
+{
+    char buf[SERVER_BUFF_SZ] = {0};
+    char *p_buf = buf;
+
+    p_buf += sprintf(p_buf, "<HTML>\r\n<HEAD>\r\n<TITLE>Method Not Implemented</TITLE>\r\n</HEAD>\r\n<BODY>\r\n");
+    p_buf += sprintf(p_buf, "<H1>HTTP request method not supported.</H1>");
+    p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
+
+    httpd_headers(client, 501, DEF_CONTENT_TYPE, buf);
+}
+
+/**********************************************************************/
+/* Print out an error message with perror() (for system errors; based
+ * on value of errno, which indicates system call errors) and exit the
+ * program indicating an error. */
+/**********************************************************************/
+void httpd_error_die(const char *sc)
+{
+    perror(sc);
+    DEBUG_PERROR(sc);
+    exit(1);
+}
+
+/**********************************************************************/
+/* Get a line from a socket, whether the line ends in a newline,
+ * carriage return, or a CRLF combination.  Terminates the string read
+ * with a null character.  If no newline indicator is found before the
+ * end of the buffer, the string is terminated with a null.  If any of
+ * the above three line terminators is read, the last character of the
+ * string will be a linefeed and the string will be terminated with a
+ * null character.
+ * Parameters: the socket descriptor
+ *             the buffer to save the data in
+ *             the size of the buffer
+ * Returns: the number of bytes stored (excluding null) */
+/**********************************************************************/
+int httpd_get_line(int sock, char *buf, int size)
+{
+    int i = 0;
+    char c = '\0';
+    int n = 0;
+
+    while ((i < size - 1) && (c != '\n'))
+    {
+        n = recv(sock, &c, 1, 0);
+        /* DEBUG printf("%02X\n", c); */
+        if (n > 0)
+        {
+            if (c == '\r')
+            {
+                n = recv(sock, &c, 1, MSG_PEEK);
+                /* DEBUG printf("%02X\n", c); */
+                if ((n > 0) && (c == '\n'))
+                {
+                    recv(sock, &c, 1, 0);
+                }
+                else
+                {
+                    c = '\n';
+                }
+            }
+            buf[i] = c;
+            i++;
+        }
+        else
+        {
+            c = '\n';
+        }
+    }
+    buf[i] = '\0';
+
+    return (i);
 }
 
 /**********************************************************************/
@@ -318,7 +439,7 @@ void bad_request(int client)
  * Parameters: the client socket descriptor
  *             FILE pointer for the file to cat */
 /**********************************************************************/
-void cat_file(int client, FILE *resource)
+void httpd_cat_file(int client, FILE *resource)
 {
     size_t count = 0;
     char buf[SERVER_BUFF_SZ] = {0};
@@ -343,37 +464,38 @@ void cat_file(int client, FILE *resource)
 }
 
 /**********************************************************************/
-/* Inform the client that a CGI script could not be executed.
- * Parameter: the client socket descriptor. */
+/* Send a regular file to the client.  Use httpd_headers, and report
+ * errors to client if they occur.
+ * Parameters: a pointer to a file structure produced from the socket
+ *              file descriptor
+ *             the name of the file to serve */
 /**********************************************************************/
-void cannot_execute(int client)
+void httpd_serve_file(int client, const char *filename)
 {
+    FILE *resource = NULL;
+    int numchars = 1;
     char buf[SERVER_BUFF_SZ] = {0};
 
-    sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
-    HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "Content-type: text/html\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-}
+    buf[0] = 'A';
+    buf[1] = '\0';
+    while ((numchars > 0) && strcmp("\n", buf))
+    { /* read & discard httpd_headers */
+        numchars = httpd_get_line(client, buf, sizeof(buf));
+        HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
+    }
 
-/**********************************************************************/
-/* Print out an error message with perror() (for system errors; based
- * on value of errno, which indicates system call errors) and exit the
- * program indicating an error. */
-/**********************************************************************/
-void error_die(const char *sc)
-{
-    perror(sc);
-    DEBUG_PERROR(sc);
-    exit(1);
+    resource = fopen(filename, "rb");
+    if (resource == NULL)
+    {
+        HTTPD_DEBUG("file [%s] not found", filename);
+        httpd_error_not_found(client);
+    }
+    else
+    {
+        httpd_headers(client, 200, httpd_content_type(filename), NULL);
+        httpd_cat_file(client, resource);
+    }
+    fclose(resource);
 }
 
 /**********************************************************************/
@@ -382,8 +504,8 @@ void error_die(const char *sc)
  * Parameters: client socket descriptor
  *             path to the CGI script */
 /**********************************************************************/
-void execute_cgi(int client, const char *path,
-                 const char *method, const char *query_string)
+void httpd_execute_cgi(int client, const char *path,
+                       const char *method, const char *query_string)
 {
     char buf[SERVER_BUFF_SZ] = {0};
     int cgi_output[2] = {0};
@@ -400,13 +522,13 @@ void execute_cgi(int client, const char *path,
     if (strcasecmp(method, "GET") == 0)
     {
         while ((numchars > 0) && strcmp("\n", buf))
-        { /* read & discard headers */
-            numchars = get_line(client, buf, sizeof(buf));
+        { /* read & discard httpd_headers */
+            numchars = httpd_get_line(client, buf, sizeof(buf));
         }
     }
     else /* POST */
     {
-        numchars = get_line(client, buf, sizeof(buf));
+        numchars = httpd_get_line(client, buf, sizeof(buf));
         while ((numchars > 0) && strcmp("\n", buf))
         {
             buf[15] = '\0';
@@ -414,11 +536,11 @@ void execute_cgi(int client, const char *path,
             {
                 content_length = atoi(&(buf[16]));
             }
-            numchars = get_line(client, buf, sizeof(buf));
+            numchars = httpd_get_line(client, buf, sizeof(buf));
         }
         if (content_length == -1)
         {
-            bad_request(client);
+            httpd_error_bad_request(client);
             return;
         }
     }
@@ -428,25 +550,25 @@ void execute_cgi(int client, const char *path,
 
     if (pipe(cgi_output) < 0)
     {
-        cannot_execute(client);
+        httpd_error_cannot_execute(client);
         return;
     }
     if (pipe(cgi_input) < 0)
     {
-        cannot_execute(client);
+        httpd_error_cannot_execute(client);
         return;
     }
 
     if ((pid = fork()) < 0)
     {
-        cannot_execute(client);
+        httpd_error_cannot_execute(client);
         return;
     }
     if (pid == 0) /* child: CGI script */
     {
-        char meth_env[255]={0};
-        char query_env[255]={0};
-        char length_env[255]={0};
+        char meth_env[255] = {0};
+        char query_env[255] = {0};
+        char length_env[255] = {0};
 
         dup2(cgi_output[1], 1);
         dup2(cgi_input[0], 0);
@@ -491,181 +613,131 @@ void execute_cgi(int client, const char *path,
 }
 
 /**********************************************************************/
-/* Get a line from a socket, whether the line ends in a newline,
- * carriage return, or a CRLF combination.  Terminates the string read
- * with a null character.  If no newline indicator is found before the
- * end of the buffer, the string is terminated with a null.  If any of
- * the above three line terminators is read, the last character of the
- * string will be a linefeed and the string will be terminated with a
- * null character.
- * Parameters: the socket descriptor
- *             the buffer to save the data in
- *             the size of the buffer
- * Returns: the number of bytes stored (excluding null) */
+/* A request has caused a call to accept() on the server port to
+ * return.  Process the request appropriately.
+ * Parameters: the socket connected to the client */
 /**********************************************************************/
-int get_line(int sock, char *buf, int size)
+void httpd_accept_request(int client)
 {
-    int i = 0;
-    char c = '\0';
-    int n = 0;
+    char buf[SERVER_BUFF_SZ] = {0};
+    int numchars = 0;
+    char method[255] = {0};
+    char url[255] = {0};
+    char path[512] = {0};
+    size_t i = 0, j = 0;
+    struct stat st = {0};
+    int cgi = 0; /* becomes true if server decides this is a CGI program */
+    char *query_string = NULL;
 
-    while ((i < size - 1) && (c != '\n'))
+    numchars = httpd_get_line(client, buf, sizeof(buf));
+
+    HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
+
+    i = 0;
+    j = 0;
+    while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
     {
-        n = recv(sock, &c, 1, 0);
-        /* DEBUG printf("%02X\n", c); */
-        if (n > 0)
+        method[i] = buf[j];
+        i++;
+        j++;
+    }
+    method[i] = '\0';
+
+    HTTPD_DEBUG("method = [%s]", method);
+
+    if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
+    {
+        httpd_error_unimplemented(client);
+        close(client);
+        return;
+    }
+
+    if (strcasecmp(method, "POST") == 0)
+    {
+        cgi = 1;
+    }
+
+    i = 0;
+    while (ISspace(buf[j]) && (j < sizeof(buf)))
+    {
+        j++;
+    }
+    while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
+    {
+        url[i] = buf[j];
+        i++;
+        j++;
+    }
+    url[i] = '\0';
+
+    HTTPD_DEBUG("url = [%s]", url);
+
+    if (strcasecmp(method, "GET") == 0)
+    {
+        query_string = url;
+        while ((*query_string != '?') && (*query_string != '\0'))
         {
-            if (c == '\r')
-            {
-                n = recv(sock, &c, 1, MSG_PEEK);
-                /* DEBUG printf("%02X\n", c); */
-                if ((n > 0) && (c == '\n'))
-                {
-                    recv(sock, &c, 1, 0);
-                }
-                else
-                {
-                    c = '\n';
-                }
-            }
-            buf[i] = c;
-            i++;
+            query_string++;
         }
-        else
+        if (*query_string == '?')
         {
-            c = '\n';
+            cgi = 1;
+            *query_string = '\0';
+            query_string++;
+            HTTPD_DEBUG("query_string = [%s]", query_string);
         }
     }
-    buf[i] = '\0';
 
-    return (i);
-}
-
-/**********************************************************************/
-/* Return the informational HTTP headers about a file. */
-/* Parameters: the socket to print the headers on
- *             the name of the file */
-/**********************************************************************/
-void headers(int client, const char *filename)
-{
-    char buf[SERVER_BUFF_SZ] = {0};
-    mime_t mime = MIME_NULL;
-    char *content_type = NULL;
-    mime = mime_types(filename); /* could use filename to determine file type */
-    switch (mime)
+    sprintf(path, "%shtdocs%s", SERVER_BASEDIR, url);
+    if (path[strlen(path) - 1] == '/')
     {
-    case MIME_TEXT_HTML:
-        content_type = "text/html";
-        break;
-    case MIME_TEXT_CSS:
-        content_type = "text/css";
-        break;
-    case MIME_TEXT_JAVASCRIPT:
-        content_type = "text/javascript";
-        break;
-    case MIME_APP_JSON:
-        content_type = "application/json";
-        break;
-    case MIME_IMAGE_JPEG:
-        content_type = "image/jpeg";
-        break;
-    case MIME_IMAGE_BMP:
-        content_type = "image/bmp";
-        break;
-    case MIME_IMAGE_PNG:
-        content_type = "image/png";
-        break;
-    case MIME_IMAGE_GIF:
-        content_type = "image/gif";
-        break;
-    default:
-        content_type = "text/plain";
-        break;
+        strcat(path, SERVER_INDEX);
     }
 
-    strcpy(buf, "HTTP/1.0 200 OK\r\n");
-    HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    strcpy(buf, SERVER_STRING);
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "Content-Type: %s\r\n", content_type);
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    strcpy(buf, "\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-}
+    HTTPD_DEBUG("path = [%s]", path);
 
-/**********************************************************************/
-/* Give a client a 404 not found status message. */
-/**********************************************************************/
-void not_found(int client)
-{
-    char buf[SERVER_BUFF_SZ] = {0};
-
-    sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
-    HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, SERVER_STRING);
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "Content-Type: text/html\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<HTML><TITLE>Not Found</TITLE>\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<BODY><P>The server could not fulfill\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "your request because the resource specified\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "is unavailable or nonexistent.\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "</BODY></HTML>\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-}
-
-/**********************************************************************/
-/* Send a regular file to the client.  Use headers, and report
- * errors to client if they occur.
- * Parameters: a pointer to a file structure produced from the socket
- *              file descriptor
- *             the name of the file to serve */
-/**********************************************************************/
-void serve_file(int client, const char *filename)
-{
-    FILE *resource = NULL;
-    int numchars = 1;
-    char buf[SERVER_BUFF_SZ] = {0};
-
-    buf[0] = 'A';
-    buf[1] = '\0';
-    while ((numchars > 0) && strcmp("\n", buf))
-    { /* read & discard headers */
-        numchars = get_line(client, buf, sizeof(buf));
-        HTTPD_DEBUG("get_line [%s], len[%d]", buf, numchars);
-    }
-
-    resource = fopen(filename, "rb");
-    if (resource == NULL)
+    if (stat(path, &st) == -1)
     {
-        HTTPD_DEBUG("file [%s] not found", filename);
-        not_found(client);
+        DEBUG_PERROR("stat");
+        while ((numchars > 0) && strcmp("\n", buf))
+        { /* read & discard httpd_headers */
+            numchars = httpd_get_line(client, buf, sizeof(buf));
+            HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
+        }
+        httpd_error_not_found(client);
     }
     else
     {
-        headers(client, filename);
-        cat_file(client, resource);
+        if ((st.st_mode & S_IFMT) == S_IFDIR)
+        {
+            strcat(path, "/" SERVER_INDEX);
+            HTTPD_DEBUG("path = [%s]", path);
+        }
+
+        if (httpd_mime_types(path) == MIME_CGI)
+        {
+            if ((st.st_mode & S_IXUSR) ||
+                (st.st_mode & S_IXGRP) ||
+                (st.st_mode & S_IXOTH))
+            {
+                cgi = 1;
+                HTTPD_DEBUG("cgi = [%d]", cgi);
+            }
+        }
+
+        if (!cgi)
+        {
+            HTTPD_DEBUG("httpd_serve_file [%s]", path);
+            httpd_serve_file(client, path);
+        }
+        else
+        {
+            HTTPD_DEBUG("httpd_execute_cgi [%s] [%s] [%s]", path, method, query_string);
+            httpd_execute_cgi(client, path, method, query_string);
+        }
     }
-    fclose(resource);
+
+    close(client);
 }
 
 /**********************************************************************/
@@ -676,7 +748,7 @@ void serve_file(int client, const char *filename)
  * Parameters: pointer to variable containing the port to connect on
  * Returns: the socket */
 /**********************************************************************/
-int startup(u_short *port)
+int httpd_startup(u_short *port)
 {
     int httpd = 0;
     struct sockaddr_in name = {0};
@@ -684,7 +756,7 @@ int startup(u_short *port)
     httpd = socket(PF_INET, SOCK_STREAM, 0);
     if (httpd == -1)
     {
-        error_die("socket");
+        httpd_error_die("socket");
     }
     memset(&name, 0, sizeof(name));
     name.sin_family = AF_INET;
@@ -692,57 +764,22 @@ int startup(u_short *port)
     name.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0)
     {
-        error_die("bind");
+        httpd_error_die("bind");
     }
     if (*port == 0) /* if dynamically allocating a port */
     {
         int namelen = sizeof(name);
         if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)
         {
-            error_die("getsockname");
+            httpd_error_die("getsockname");
         }
         *port = ntohs(name.sin_port);
     }
     if (listen(httpd, 5) < 0)
     {
-        error_die("listen");
+        httpd_error_die("listen");
     }
     return (httpd);
-}
-
-/**********************************************************************/
-/* Inform the client that the requested web method has not been
- * implemented.
- * Parameter: the client socket */
-/**********************************************************************/
-void unimplemented(int client)
-{
-    char buf[SERVER_BUFF_SZ] = {0};
-
-    sprintf(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
-    HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, SERVER_STRING);
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "Content-Type: text/html\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<HTML><HEAD><TITLE>Method Not Implemented\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "</TITLE></HEAD>\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<BODY><P>HTTP request method not supported.\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "</BODY></HTML>\r\n");
-    //HTTPD_DEBUG("send buf = [%s]", buf);
-    send(client, buf, strlen(buf), 0);
 }
 
 /**********************************************************************/
@@ -756,7 +793,7 @@ int main(void)
     int client_name_len = sizeof(client_name);
     pthread_t newthread;
 
-    server_sock = startup(&port);
+    server_sock = httpd_startup(&port);
     printf("httpd running on port %d\n", port);
 
     while (1)
@@ -766,10 +803,10 @@ int main(void)
                              &client_name_len);
         if (client_sock == -1)
         {
-            error_die("accept");
+            httpd_error_die("accept");
         }
-        /* accept_request(client_sock); */
-        if (pthread_create(&newthread, NULL, accept_request, client_sock) != 0)
+        /* httpd_accept_request(client_sock); */
+        if (pthread_create(&newthread, NULL, httpd_accept_request, client_sock) != 0)
         {
             perror("pthread_create");
             DEBUG_PERROR("pthread_create");
