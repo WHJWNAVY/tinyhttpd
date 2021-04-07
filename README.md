@@ -1,8 +1,8 @@
-# tinyhttpd
+# Tiny HTTPd
 
-> my tinyhttpd, fork from [tinyhttpd](http://tinyhttpd.sourceforge.net/)
+> Fork from [Tiny HTTPd](http://tinyhttpd.sourceforge.net/)
 
-> [README](README)
+> [Tiny HTTPd README](README)
 
 ## make & run
 
