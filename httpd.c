@@ -45,25 +45,6 @@
 #define SERVER_BUFF_SZ 1024
 #define SERVER_PORT 0 // 0 FOR RANDOM
 
-// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
-#if 0
-typedef enum mime_e
-{
-    MIME_NULL = 0,
-    MIME_TEXT_PLAN,       // text/plain, .text, .txt
-    MIME_TEXT_HTML,       // text/html, .htm, .html
-    MIME_TEXT_CSS,        // text/css, .css
-    MIME_TEXT_JAVASCRIPT, // text/javascript, .js
-    MIME_APP_JSON,        // application/json, .json
-    MIME_IMAGE_JPEG,      // image/jpeg, .jpeg, .jpg
-    MIME_IMAGE_BMP,       // image/bmp, .bmp
-    MIME_IMAGE_PNG,       // image/png, .png
-    MIME_IMAGE_GIF,       // image/gif, .gif
-    MIME_CGI,             // CGI, .cgi
-    MIME_MAX,
-} mime_t;
-#endif
-
 const char *httpd_file_suffix(const char *filename)
 {
     char *ext = NULL;
@@ -83,136 +64,6 @@ const char *httpd_file_suffix(const char *filename)
     return ext;
 }
 
-#if 0
-mime_t httpd_mime_types(const char *filename)
-{
-    mime_t m = MIME_NULL;
-    char *fext = httpd_file_suffix(filename);
-    HTTPD_DEBUG("filename = [%s], ext = [%s]", filename, fext);
-    if (fext != NULL)
-    {
-        if (strcasecmp(fext, "text") == 0)
-        {
-            m = MIME_TEXT_PLAN;
-        }
-        else if (strcasecmp(fext, "txt") == 0)
-        {
-            m = MIME_TEXT_PLAN;
-        }
-        else if (strcasecmp(fext, "html") == 0)
-        {
-            m = MIME_TEXT_HTML;
-        }
-        else if (strcasecmp(fext, "htm") == 0)
-        {
-            m = MIME_TEXT_HTML;
-        }
-        else if (strcasecmp(fext, "css") == 0)
-        {
-            m = MIME_TEXT_CSS;
-        }
-        else if (strcasecmp(fext, "json") == 0)
-        {
-            m = MIME_APP_JSON;
-        }
-        else if (strcasecmp(fext, "js") == 0)
-        {
-            m = MIME_TEXT_JAVASCRIPT;
-        }
-        else if (strcasecmp(fext, "jpeg") == 0)
-        {
-            m = MIME_IMAGE_JPEG;
-        }
-        else if (strcasecmp(fext, "jpg") == 0)
-        {
-            m = MIME_IMAGE_JPEG;
-        }
-        else if (strcasecmp(fext, "bmp") == 0)
-        {
-            m = MIME_IMAGE_BMP;
-        }
-        else if (strcasecmp(fext, "png") == 0)
-        {
-            m = MIME_IMAGE_PNG;
-        }
-        else if (strcasecmp(fext, "gif") == 0)
-        {
-            m = MIME_IMAGE_GIF;
-        }
-        else if (strcasecmp(fext, "cgi") == 0)
-        {
-            m = MIME_CGI;
-        }
-        else if (strcasecmp(fext, "py") == 0)
-        {
-            m = MIME_CGI;
-        }
-        else if (strcasecmp(fext, "lua") == 0)
-        {
-            m = MIME_CGI;
-        }
-        else if (strcasecmp(fext, "sh") == 0)
-        {
-            m = MIME_CGI;
-        }
-        else
-        {
-            m = MIME_NULL;
-        }
-    }
-
-    HTTPD_DEBUG("filename = [%s], mime = [%d]", filename, m);
-
-    return m;
-}
-#endif
-
-#if 0
-#define DEF_CONTENT_TYPE "text/html"
-char *httpd_content_type(const char *filename)
-{
-    mime_t mime = MIME_NULL;
-    char *content_type = NULL;
-    mime = httpd_mime_types(filename); /* could use filename to determine file type */
-    switch (mime)
-    {
-    case MIME_TEXT_PLAN:
-        content_type = "text/plain";
-        break;
-    case MIME_TEXT_HTML:
-        content_type = "text/html";
-        break;
-    case MIME_TEXT_CSS:
-        content_type = "text/css";
-        break;
-    case MIME_TEXT_JAVASCRIPT:
-        content_type = "text/javascript";
-        break;
-    case MIME_APP_JSON:
-        content_type = "application/json";
-        break;
-    case MIME_IMAGE_JPEG:
-        content_type = "image/jpeg";
-        break;
-    case MIME_IMAGE_BMP:
-        content_type = "image/bmp";
-        break;
-    case MIME_IMAGE_PNG:
-        content_type = "image/png";
-        break;
-    case MIME_IMAGE_GIF:
-        content_type = "image/gif";
-        break;
-    default:
-        content_type = DEF_CONTENT_TYPE;
-        break;
-    }
-
- HTTPD_DEBUG("filename = [%s], content_type = [%s]", filename, content_type);
-
-    return content_type;
-}
-#else
 #define DEF_CONTENT_TYPE MINE_TYPE_DEFAULT
 char *httpd_content_type(const char *filename)
 {
@@ -245,76 +96,7 @@ int is_mime_type_cgi(const char *filename)
 
     return (!strcasecmp(mime_type, MINE_TYPE_CGI));
 }
-#endif
 
-// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status
-#if 0
-char *httpd_status_type(uint32_t status_code)
-{
-    char *status_type = NULL;
-    switch (status_code)
-    {
-    case 200:
-        status_type = "200 OK";
-        break;
-    case 206:
-        status_type = "206 Partial Content";
-        break;
-    case 301:
-        status_type = "301 Moved Permanently";
-        break;
-    case 302:
-        status_type = "302 Found";
-        break;
-    case 304:
-        status_type = "304 Not Modified";
-        break;
-    case 400:
-        status_type = "400 Bad Request";
-        break;
-    case 401:
-        status_type = "401 Unauthorized";
-        break;
-    case 403:
-        status_type = "403 Forbidden";
-        break;
-    case 404:
-        status_type = "404 Not Found";
-        break;
-    case 405:
-        status_type = "405 Method Not Allowed";
-        break;
-    case 408:
-        status_type = "408 Request Time-out";
-        break;
-    case 411:
-        status_type = "411 Length Required";
-        break;
-    case 412:
-        status_type = "412 Precondition Failed";
-        break;
-    case 416:
-        status_type = "416 Requested range not satisfiable";
-        break;
-    case 500:
-        status_type = "500 Internal Server Error";
-        break;
-    case 501:
-        status_type = "501 Not Implemented";
-        break;
-    case 503:
-        status_type = "503 Server Unavailable";
-        break;
-    default:
-        status_type = "404 Not Found";
-        break;
-    }
-
-    HTTPD_DEBUG("code = [%d], status = [%s]", status_code, status_type);
-
-    return status_type;
-}
-#else
 #define DEF_STATUS_TYPE STATUS_CODE_DEFAULT
 char *httpd_status_type(uint32_t status_code)
 {
@@ -335,7 +117,6 @@ char *httpd_status_type(uint32_t status_code)
 
     return status_type;
 }
-#endif
 
 /**********************************************************************/
 /* Return the informational HTTP httpd_headers about a file. */
@@ -346,30 +127,7 @@ char *httpd_status_type(uint32_t status_code)
 void httpd_headers(int client, int status_code, const char *content_type, const char *message)
 {
     char buf[SERVER_BUFF_SZ] = {0};
-#if 0
-    sprintf(buf, "HTTP/1.0 %s\r\n", httpd_status_type(status_code));
-    send(client, buf, strlen(buf), 0);
-    HTTPD_DEBUG("send buf = [%s]", buf);
 
-    bzero(buf, sizeof(buf));
-    sprintf(buf, "%s\r\n", HTTPD_HEADERS);
-    send(client, buf, strlen(buf), 0);
-
-    bzero(buf, sizeof(buf));
-    sprintf(buf, "Content-Type: %s\r\n\r\n", content_type);
-    send(client, buf, strlen(buf), 0);
-
-    // bzero(buf, sizeof(buf));
-    // strcpy(buf, "\r\n");
-    // send(client, buf, strlen(buf), 0);
-
-    if ((message != NULL) && (strlen(message) > 0))
-    {
-        bzero(buf, sizeof(buf));
-        sprintf(buf, "%s\r\n", message);
-        send(client, buf, strlen(buf), 0);
-    }
-#else
     char *p_buf = buf;
     p_buf += sprintf(p_buf, "HTTP/1.0 %s\r\n", httpd_status_type(status_code));
     p_buf += sprintf(p_buf, "%s\r\n", HTTPD_HEADERS);
@@ -381,7 +139,6 @@ void httpd_headers(int client, int status_code, const char *content_type, const 
     }
     send(client, buf, strlen(buf), 0);
     HTTPD_DEBUG("send buf = [%s]", buf);
-#endif
 }
 
 /**********************************************************************/
@@ -783,11 +540,7 @@ void httpd_accept_request(int client)
             HTTPD_DEBUG("path = [%s]", path);
         }
 
-#if 0
-        if (httpd_mime_types(path) == MIME_CGI)
-#else
         if (is_mime_type_cgi(path))
-#endif
         {
             if ((st.st_mode & S_IXUSR) ||
                 (st.st_mode & S_IXGRP) ||

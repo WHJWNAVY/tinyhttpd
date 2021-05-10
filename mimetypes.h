@@ -29,6 +29,7 @@ struct mimetype
 #define MINE_TYPE_CGI "application/cgi"
 #define MINE_TYPE_DEFAULT "text/html"
 
+// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
 static const struct mimetype MINE_TYPES[] = {
 
     {"txt", "text/plain"},

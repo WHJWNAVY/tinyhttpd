@@ -9,6 +9,7 @@ struct statuscode
 
 #define STATUS_CODE_DEFAULT "404 Not Found"
 
+// see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status
 static const struct statuscode STATUS_CODE[] = {
     {100, "100 Continue"},
     {101, "101 Switching Protocols"},
