@@ -119,12 +119,12 @@ char *httpd_status_type(uint32_t status_code)
 }
 
 /**********************************************************************/
-/* Return the informational HTTP httpd_headers about a file. */
-/* Parameters: the socket to print the httpd_headers on
+/* Return the informational HTTP httpd_resp_headers about a file. */
+/* Parameters: the socket to print the httpd_resp_headers on
  *             the name of the file */
 /**********************************************************************/
 // see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers
-void httpd_headers(int client, int status_code, const char *content_type, const char *message)
+void httpd_resp_headers(int client, int status_code, const char *content_type, const char *message)
 {
     char buf[SERVER_BUFF_SZ] = {0};
 
@@ -154,7 +154,7 @@ void httpd_error_bad_request(int client)
     p_buf += sprintf(p_buf, "<H1>Your browser sent a bad request, such as a POST without a Content-Length.</H1>");
     p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
 
-    httpd_headers(client, 400, DEF_CONTENT_TYPE, buf);
+    httpd_resp_headers(client, 400, DEF_CONTENT_TYPE, buf);
 }
 
 /**********************************************************************/
@@ -170,7 +170,7 @@ void httpd_error_cannot_execute(int client)
     p_buf += sprintf(p_buf, "<H1>Error prohibited CGI execution.</H1>");
     p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
 
-    httpd_headers(client, 500, DEF_CONTENT_TYPE, buf);
+    httpd_resp_headers(client, 500, DEF_CONTENT_TYPE, buf);
 }
 
 /**********************************************************************/
@@ -185,7 +185,7 @@ void httpd_error_not_found(int client)
     p_buf += sprintf(p_buf, "<H1>The server could not fulfill your request because the resource specified is unavailable or nonexistent.</H1>");
     p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
 
-    httpd_headers(client, 404, DEF_CONTENT_TYPE, buf);
+    httpd_resp_headers(client, 404, DEF_CONTENT_TYPE, buf);
 }
 
 /**********************************************************************/
@@ -202,7 +202,7 @@ void httpd_error_unimplemented(int client)
     p_buf += sprintf(p_buf, "<H1>HTTP request method not supported.</H1>");
     p_buf += sprintf(p_buf, "\r\n</BODY>\r\n</HTML>");
 
-    httpd_headers(client, 501, DEF_CONTENT_TYPE, buf);
+    httpd_resp_headers(client, 501, DEF_CONTENT_TYPE, buf);
 }
 
 /**********************************************************************/
@@ -290,7 +290,7 @@ void httpd_cat_file(int client, FILE *resource)
 }
 
 /**********************************************************************/
-/* Send a regular file to the client.  Use httpd_headers, and report
+/* Send a regular file to the client.  Use httpd_resp_headers, and report
  * errors to client if they occur.
  * Parameters: a pointer to a file structure produced from the socket
  *              file descriptor
@@ -305,7 +305,7 @@ void httpd_serve_file(int client, const char *filename)
     buf[0] = 'A';
     buf[1] = '\0';
     while ((numchars > 0) && strcmp("\n", buf))
-    { /* read & discard httpd_headers */
+    { /* read & discard httpd_resp_headers */
         numchars = httpd_get_line(client, buf, sizeof(buf));
         //HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
     }
@@ -318,7 +318,7 @@ void httpd_serve_file(int client, const char *filename)
     }
     else
     {
-        httpd_headers(client, 200, httpd_content_type(filename), NULL);
+        httpd_resp_headers(client, 200, httpd_content_type(filename), NULL);
         httpd_cat_file(client, resource);
     }
     fclose(resource);
@@ -348,7 +348,7 @@ void httpd_execute_cgi(int client, const char *path,
     if (strcasecmp(method, "GET") == 0)
     {
         while ((numchars > 0) && strcmp("\n", buf))
-        { /* read & discard httpd_headers */
+        { /* read & discard httpd_resp_headers */
             numchars = httpd_get_line(client, buf, sizeof(buf));
         }
     }
@@ -526,7 +526,7 @@ void httpd_accept_request(int client)
     {
         DEBUG_PERROR("stat");
         while ((numchars > 0) && strcmp("\n", buf))
-        { /* read & discard httpd_headers */
+        { /* read & discard httpd_resp_headers */
             numchars = httpd_get_line(client, buf, sizeof(buf));
             //HTTPD_DEBUG("httpd_get_line [%s], len[%d]", buf, numchars);
         }
