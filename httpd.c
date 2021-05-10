@@ -12,22 +12,31 @@
  *  4) Uncomment the line that runs httpd_accept_request().
  *  5) Remove -lsocket from the Makefile.
  */
+
+//#define SERVER_MUTI_THREAD 1
+
 #include <stdio.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <strings.h>
 #include <string.h>
-#include <sys/stat.h>
+
+#ifdef SERVER_MUTI_THREAD
 #include <pthread.h>
+#endif
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
-#include <stdlib.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include "statuscode.h"
+#include "mimetypes.h"
 #include "debug.h"
 
-#define ISspace(x) isspace((int)(x))
+#define IS_SPACE(x) isspace((int)(x))
 
 #define HTTPD_HEADERS "Server: Tiny Httpd/0.2.0\r\nCache-control: no-cache\r\nPragma: no-cache\r\nExpires: 0"
 
@@ -37,6 +46,7 @@
 #define SERVER_PORT 0 // 0 FOR RANDOM
 
 // see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
+#if 0
 typedef enum mime_e
 {
     MIME_NULL = 0,
@@ -52,6 +62,7 @@ typedef enum mime_e
     MIME_CGI,             // CGI, .cgi
     MIME_MAX,
 } mime_t;
+#endif
 
 const char *httpd_file_suffix(const char *filename)
 {
@@ -72,6 +83,7 @@ const char *httpd_file_suffix(const char *filename)
     return ext;
 }
 
+#if 0
 mime_t httpd_mime_types(const char *filename)
 {
     mime_t m = MIME_NULL;
@@ -153,7 +165,9 @@ mime_t httpd_mime_types(const char *filename)
 
     return m;
 }
+#endif
 
+#if 0
 #define DEF_CONTENT_TYPE "text/html"
 char *httpd_content_type(const char *filename)
 {
@@ -198,6 +212,35 @@ char *httpd_content_type(const char *filename)
 
     return content_type;
 }
+#else
+#define DEF_CONTENT_TYPE MINE_TYPE_DEFAULT
+char *httpd_content_type(const char *filename) {
+  char *content_type = DEF_CONTENT_TYPE;
+  const struct mimetype *m = &MINE_TYPES[0];
+  char *fext = httpd_file_suffix(filename);
+  HTTPD_DEBUG("filename = [%s], ext = [%s]", filename, fext);
+  if (fext != NULL) {
+    while (m->extn) {
+      if (!strcasecmp(fext, m->extn)) {
+        content_type = m->mime;
+        break;
+      }
+      m++;
+    }
+  }
+
+  HTTPD_DEBUG("filename = [%s], content_type = [%s]",
+              ((filename == NULL) ? "NULL" : filename), content_type);
+
+  return content_type;
+}
+
+int is_mime_type_cgi(const char *filename) {
+  char *mime_type = httpd_content_type(filename);
+
+  return (!strcasecmp(mime_type, MINE_TYPE_CGI));
+}
+#endif
 
 // see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status
 char *httpd_status_code(uint32_t status_code)
@@ -633,7 +676,7 @@ void httpd_accept_request(int client)
 
     i = 0;
     j = 0;
-    while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
+    while (!IS_SPACE(buf[j]) && (i < sizeof(method) - 1))
     {
         method[i] = buf[j];
         i++;
@@ -656,11 +699,11 @@ void httpd_accept_request(int client)
     }
 
     i = 0;
-    while (ISspace(buf[j]) && (j < sizeof(buf)))
+    while (IS_SPACE(buf[j]) && (j < sizeof(buf)))
     {
         j++;
     }
-    while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
+    while (!IS_SPACE(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
     {
         url[i] = buf[j];
         i++;
@@ -712,7 +755,11 @@ void httpd_accept_request(int client)
             HTTPD_DEBUG("path = [%s]", path);
         }
 
+#if 0
         if (httpd_mime_types(path) == MIME_CGI)
+#else
+        if (is_mime_type_cgi(path))
+#endif
         {
             if ((st.st_mode & S_IXUSR) ||
                 (st.st_mode & S_IXGRP) ||
@@ -789,7 +836,9 @@ int main(void)
     int client_sock = -1;
     struct sockaddr_in client_name = {0};
     int client_name_len = sizeof(client_name);
+    #ifdef  SERVER_MUTI_THREAD
     pthread_t newthread;
+    #endif
 
     server_sock = httpd_startup(&port);
     printf("httpd running on port %d\n", port);
@@ -804,12 +853,16 @@ int main(void)
         {
             httpd_error_die("accept");
         }
-        /* httpd_accept_request(client_sock); */
+
+        #ifdef  SERVER_MUTI_THREAD
         if (pthread_create(&newthread, NULL, httpd_accept_request, client_sock) != 0)
         {
             perror("pthread_create");
             DEBUG_PERROR("pthread_create");
         }
+        #else
+        httpd_accept_request(client_sock);
+        #endif
     }
 
     close(server_sock);
