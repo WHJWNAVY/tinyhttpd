@@ -214,36 +214,42 @@ char *httpd_content_type(const char *filename)
 }
 #else
 #define DEF_CONTENT_TYPE MINE_TYPE_DEFAULT
-char *httpd_content_type(const char *filename) {
-  char *content_type = DEF_CONTENT_TYPE;
-  const struct mimetype *m = &MINE_TYPES[0];
-  char *fext = httpd_file_suffix(filename);
-  HTTPD_DEBUG("filename = [%s], ext = [%s]", filename, fext);
-  if (fext != NULL) {
-    while (m->extn) {
-      if (!strcasecmp(fext, m->extn)) {
-        content_type = m->mime;
-        break;
-      }
-      m++;
+char *httpd_content_type(const char *filename)
+{
+    char *content_type = DEF_CONTENT_TYPE;
+    const struct mimetype *m = &MINE_TYPES[0];
+    char *fext = httpd_file_suffix(filename);
+    HTTPD_DEBUG("filename = [%s], ext = [%s]", filename, fext);
+    if (fext != NULL)
+    {
+        while (m->extn)
+        {
+            if (!strcasecmp(fext, m->extn))
+            {
+                content_type = m->mime;
+                break;
+            }
+            m++;
+        }
     }
-  }
 
-  HTTPD_DEBUG("filename = [%s], content_type = [%s]",
-              ((filename == NULL) ? "NULL" : filename), content_type);
+    HTTPD_DEBUG("filename = [%s], content_type = [%s]",
+                ((filename == NULL) ? "NULL" : filename), content_type);
 
-  return content_type;
+    return content_type;
 }
 
-int is_mime_type_cgi(const char *filename) {
-  char *mime_type = httpd_content_type(filename);
+int is_mime_type_cgi(const char *filename)
+{
+    char *mime_type = httpd_content_type(filename);
 
-  return (!strcasecmp(mime_type, MINE_TYPE_CGI));
+    return (!strcasecmp(mime_type, MINE_TYPE_CGI));
 }
 #endif
 
 // see https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status
-char *httpd_status_code(uint32_t status_code)
+#if 0
+char *httpd_status_type(uint32_t status_code)
 {
     char *status_type = NULL;
     switch (status_code)
@@ -308,6 +314,28 @@ char *httpd_status_code(uint32_t status_code)
 
     return status_type;
 }
+#else
+#define DEF_STATUS_TYPE STATUS_CODE_DEFAULT
+char *httpd_status_type(uint32_t status_code)
+{
+    char *status_type = DEF_STATUS_TYPE;
+    const struct statuscode *sc = &STATUS_CODE[0];
+
+    while (sc->code)
+    {
+        if (status_code == sc->code)
+        {
+            status_type = sc->status;
+            break;
+        }
+        sc++;
+    }
+
+    HTTPD_DEBUG("code = [%d], status = [%s]", status_code, status_type);
+
+    return status_type;
+}
+#endif
 
 /**********************************************************************/
 /* Return the informational HTTP httpd_headers about a file. */
@@ -319,7 +347,7 @@ void httpd_headers(int client, int status_code, const char *content_type, const 
 {
     char buf[SERVER_BUFF_SZ] = {0};
 #if 0
-    sprintf(buf, "HTTP/1.0 %s\r\n", httpd_status_code(status_code));
+    sprintf(buf, "HTTP/1.0 %s\r\n", httpd_status_type(status_code));
     send(client, buf, strlen(buf), 0);
     HTTPD_DEBUG("send buf = [%s]", buf);
 
@@ -343,7 +371,7 @@ void httpd_headers(int client, int status_code, const char *content_type, const 
     }
 #else
     char *p_buf = buf;
-    p_buf += sprintf(p_buf, "HTTP/1.0 %s\r\n", httpd_status_code(status_code));
+    p_buf += sprintf(p_buf, "HTTP/1.0 %s\r\n", httpd_status_type(status_code));
     p_buf += sprintf(p_buf, "%s\r\n", HTTPD_HEADERS);
     p_buf += sprintf(p_buf, "Content-Type: %s\r\n\r\n", content_type);
 
@@ -836,9 +864,9 @@ int main(void)
     int client_sock = -1;
     struct sockaddr_in client_name = {0};
     int client_name_len = sizeof(client_name);
-    #ifdef  SERVER_MUTI_THREAD
+#ifdef SERVER_MUTI_THREAD
     pthread_t newthread;
-    #endif
+#endif
 
     server_sock = httpd_startup(&port);
     printf("httpd running on port %d\n", port);
@@ -854,15 +882,15 @@ int main(void)
             httpd_error_die("accept");
         }
 
-        #ifdef  SERVER_MUTI_THREAD
+#ifdef SERVER_MUTI_THREAD
         if (pthread_create(&newthread, NULL, httpd_accept_request, client_sock) != 0)
         {
             perror("pthread_create");
             DEBUG_PERROR("pthread_create");
         }
-        #else
+#else
         httpd_accept_request(client_sock);
-        #endif
+#endif
     }
 
     close(server_sock);

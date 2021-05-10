@@ -20,9 +20,10 @@
 #ifndef _MIMETYPES_
 #define _MIMETYPES_
 
-struct mimetype {
-  const char *extn;
-  const char *mime;
+struct mimetype
+{
+    const char *extn;
+    const char *mime;
 };
 
 #define MINE_TYPE_CGI "application/cgi"
