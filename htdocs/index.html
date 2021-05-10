@@ -1,11 +1,46 @@
-<HTML>
-<TITLE>Index</TITLE>
-<BODY>
-<P>Welcome to J. David's webserver.
-<H1>CGI demo
-<FORM ACTION="color.cgi" METHOD="POST">
-Enter a color: <INPUT TYPE="text" NAME="color">
-<INPUT TYPE="submit">
-</FORM>
-</BODY>
-</HTML>
+<html>
+<title>Index</title>
+
+<head>
+    <script src="jquery.min.js"></script>
+    <script>
+        var switch_on = true;
+        function light_led() {
+            if (switch_on == true) {
+                switch_on = false;
+                $("#light_switch").text("开");
+                $("#light_on").attr("src", "switch_off.png");
+            } else {
+                switch_on = true;
+                $("#light_switch").text("关");
+                $("#light_on").attr("src", "switch_on.png");
+            }
+        }
+        $(document).ready(function () {
+            $("#light_on").click(function () {
+                light_led();
+                // $.post("/example/jquery/demo_test_post.asp",
+                //     {
+                //         name: "Donald Duck",
+                //         city: "Duckburg"
+                //     },
+                //     function (data, status) {
+                //         alert("数据：" + data + "\n状态：" + status);
+                //     });
+            });
+        });
+    </script>
+</head>
+
+<body>
+    <p>Welcome to J. David's webserver.</p>
+    <h1>CGI demo</h1>
+    <form action="color.cgi" method="POST">
+        Enter a color:
+        <input TYPE="text" NAME="color">
+        <input TYPE="submit">
+    </form>
+    <img id="light_on" src="switch_on.png" alt="灯泡" />
+</body>
+
+</html>
