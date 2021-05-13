@@ -1,9 +1,11 @@
 #ifndef _STATUS_CODE_
 #define _STATUS_CODE_
 
+#include <stdint.h>
+
 struct statuscode
 {
-    const char *code;
+    uint32_t   code;
     const char *status;
 };
 

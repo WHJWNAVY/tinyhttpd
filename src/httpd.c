@@ -16,6 +16,7 @@
 //#define SERVER_MUTI_THREAD 1
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
@@ -39,11 +40,22 @@
 #define IS_SPACE(x) isspace((int)(x))
 
 #define HTTPD_HEADERS "Server: Tiny Httpd/0.2.0\r\nCache-control: no-cache\r\nPragma: no-cache\r\nExpires: 0"
+#define HTTPD_DEFCGI "app.cgi"
 
 #define SERVER_INDEX "index.html"
-#define SERVER_BASEDIR "/tmp/www/"
+#define SERVER_BASEDIR "/tmp/www/htdocs/"
 #define SERVER_BUFF_SZ 1024
-#define SERVER_PORT 0 // 0 FOR RANDOM
+#define SERVER_PORT 8888 // 0 FOR RANDOM
+
+struct alias_s
+{
+    const char *url;
+    const char *path;
+};
+
+static const struct alias_s ALIAS_URL[] = {
+    {"/app", SERVER_BASEDIR HTTPD_DEFCGI},
+    {NULL, NULL}};
 
 const char *httpd_file_suffix(const char *filename)
 {
@@ -438,6 +450,26 @@ void httpd_execute_cgi(int client, const char *path,
     }
 }
 
+int httpd_alias_check(const char *url, char *path)
+{
+    int is_alias = 0;
+    const struct alias_s *at = &ALIAS_URL[0];
+
+    while (at->url)
+    {
+        if (strcasecmp(at->url, url) == 0)
+        {
+            is_alias = 1;
+            strcpy(path, at->path);
+            HTTPD_DEBUG("alias [%s] = [%s]", url, path);
+            break;
+        }
+        at++;
+    }
+
+    return is_alias;
+}
+
 /**********************************************************************/
 /* A request has caused a call to accept() on the server port to
  * return.  Process the request appropriately.
@@ -452,8 +484,10 @@ void httpd_accept_request(int client)
     char path[512] = {0};
     size_t i = 0, j = 0;
     struct stat st = {0};
-    int cgi = 0; /* becomes true if server decides this is a CGI program */
+
+    int is_cgi = 0; /* becomes true if server decides this is a CGI program */
     char *query_string = NULL;
+    int is_alias = 0;
 
     numchars = httpd_get_line(client, buf, sizeof(buf));
 
@@ -480,7 +514,7 @@ void httpd_accept_request(int client)
 
     if (strcasecmp(method, "POST") == 0)
     {
-        cgi = 1;
+        is_cgi = 1;
     }
 
     i = 0;
@@ -507,17 +541,27 @@ void httpd_accept_request(int client)
         }
         if (*query_string == '?')
         {
-            cgi = 1;
+            is_cgi = 1;
             *query_string = '\0';
             query_string++;
             HTTPD_DEBUG("query_string = [%s]", query_string);
         }
     }
 
-    sprintf(path, "%shtdocs%s", SERVER_BASEDIR, url);
-    if (path[strlen(path) - 1] == '/')
+    if (httpd_alias_check(url, path))
     {
-        strcat(path, SERVER_INDEX);
+        is_alias = 1;
+        is_cgi = 1;
+    }
+    HTTPD_DEBUG("is_alias [%d]", is_alias);
+
+    if (!is_alias)
+    {
+        sprintf(path, "%s%s", SERVER_BASEDIR, url);
+        if (path[strlen(path) - 1] == '/')
+        {
+            strcat(path, SERVER_INDEX);
+        }
     }
 
     HTTPD_DEBUG("path = [%s]", path);
@@ -546,12 +590,12 @@ void httpd_accept_request(int client)
                 (st.st_mode & S_IXGRP) ||
                 (st.st_mode & S_IXOTH))
             {
-                cgi = 1;
-                HTTPD_DEBUG("cgi = [%d]", cgi);
+                is_cgi = 1;
+                HTTPD_DEBUG("is_cgi = [%d]", is_cgi);
             }
         }
 
-        if (!cgi)
+        if (!is_cgi)
         {
             HTTPD_DEBUG("httpd_serve_file [%s]", path);
             httpd_serve_file(client, path);
